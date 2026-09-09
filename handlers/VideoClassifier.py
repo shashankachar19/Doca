@@ -1,6 +1,6 @@
 """Video file handler for the DoCA project.
 
-Provides a :class:`VideoHandler` that samples frames from a video at
+Provides a :class:`VideoClassifier` that samples frames from a video at
 ~1 FPS, computes the average structural similarity (SSIM) between
 consecutive frames, and uses that ratio as a heuristic for whether
 the video is likely stationary security-camera footage.
@@ -21,11 +21,11 @@ logger = logging.getLogger(__name__)
 SUPPORTED_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"}
 
 
-class VideoHandlerError(Exception):
-    """Raised when the VideoHandler cannot complete an operation."""
+class VideoClassifierError(Exception):
+    """Raised when the VideoClassifier cannot complete an operation."""
 
 
-class VideoHandler:
+class VideoClassifier:
     """Analyze videos to flag likely stationary security-camera footage.
 
     Parameters
@@ -59,20 +59,20 @@ class VideoHandler:
     # Internal helpers
     # ------------------------------------------------------------------ #
     def _open_capture(self, video_path: str) -> cv2.VideoCapture:
-        """Open a VideoCapture or raise VideoHandlerError."""
+        """Open a VideoCapture or raise VideoClassifierError."""
         if not os.path.isfile(video_path):
-            raise VideoHandlerError(f"Video file not found: {video_path}")
+            raise VideoClassifierError(f"Video file not found: {video_path}")
 
         try:
             cap = cv2.VideoCapture(video_path)
         except cv2.error as exc:
-            raise VideoHandlerError(
+            raise VideoClassifierError(
                 f"OpenCV failed to open '{video_path}': {exc}"
             ) from exc
 
         if not cap.isOpened():
             cap.release()
-            raise VideoHandlerError(
+            raise VideoClassifierError(
                 f"OpenCV could not open '{video_path}' "
                 "(unsupported codec or corrupted file)."
             )
@@ -82,7 +82,7 @@ class VideoHandler:
         """Resize ``frame`` to ``self.target_height`` keeping aspect ratio."""
         height, width = frame.shape[:2]
         if height == 0 or width == 0:
-            raise VideoHandlerError("Frame has zero dimensions")
+            raise VideoClassifierError("Frame has zero dimensions")
         new_h = self.target_height
         new_w = max(1, int(round(width * (new_h / height))))
         return cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)

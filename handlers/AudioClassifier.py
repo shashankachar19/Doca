@@ -1,6 +1,6 @@
 """Audio file handler for the DoCA project.
 
-Provides an :class:`AudioHandler` that runs Ina's Speech Segmenter on an
+Provides an :class:`AudioClassifier` that runs Ina's Speech Segmenter on an
 audio file, summarizes the detected labels (music / male / female /
 noise / silence) and returns a JSON-safe metadata dictionary suitable
 for :meth:`handlers.db_handler.DBHandler.save_document`.
@@ -21,11 +21,11 @@ SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".wma"}
 _TRACKED_LABELS = {"music", "male", "female", "noise", "noEnergy"}
 
 
-class AudioHandlerError(Exception):
-    """Raised when the AudioHandler cannot complete an operation."""
+class AudioClassifierError(Exception):
+    """Raised when the AudioClassifier cannot complete an operation."""
 
 
-class AudioHandler:
+class AudioClassifier:
     """Segment audio files and summarize time per class.
 
     Parameters
@@ -63,7 +63,7 @@ class AudioHandler:
             # not trigger a TensorFlow import and CNN weight download.
             from inaSpeechSegmenter import Segmenter
         except ImportError as exc:
-            raise AudioHandlerError(
+            raise AudioClassifierError(
                 "inaSpeechSegmenter is not installed. "
                 "Add it to requirements.txt and reinstall."
             ) from exc
@@ -74,7 +74,7 @@ class AudioHandler:
                 detect_gender=self.detect_gender,
             )
         except Exception as exc:  # TF / HDF5 / network errors on weight fetch
-            raise AudioHandlerError(
+            raise AudioClassifierError(
                 "Failed to initialize inaSpeechSegmenter "
                 f"(check TensorFlow install and network access for model download): {exc}"
             ) from exc
@@ -93,7 +93,7 @@ class AudioHandler:
         if not audio_path:
             raise ValueError("audio_path must be a non-empty string")
         if not os.path.isfile(audio_path):
-            raise AudioHandlerError(f"Audio file not found: {audio_path}")
+            raise AudioClassifierError(f"Audio file not found: {audio_path}")
 
         segmenter = self._get_segmenter()
 
@@ -101,11 +101,11 @@ class AudioHandler:
             segments = segmenter(audio_path)
         except FileNotFoundError as exc:
             # Typically raised when ffmpeg is missing from PATH.
-            raise AudioHandlerError(
+            raise AudioClassifierError(
                 f"Audio decoding failed. Ensure ffmpeg is installed and on PATH: {exc}"
             ) from exc
         except Exception as exc:
-            raise AudioHandlerError(
+            raise AudioClassifierError(
                 f"Segmentation failed for '{audio_path}': {exc}"
             ) from exc
 
