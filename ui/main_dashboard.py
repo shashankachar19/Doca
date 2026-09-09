@@ -26,6 +26,8 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from typing import Any, Optional
 
 from PyQt6.QtCore import Qt, QObject, QThread, pyqtSignal, pyqtSlot
@@ -40,11 +42,11 @@ from PyQt6.QtWidgets import (
 from watchdog.observers import Observer
 
 from batch_sorter import DocumentSorter
-from handlers.audio_handler import AudioHandler
+from handlers.AudioClassifier import AudioClassifier
 from handlers.db_handler import DBHandler, DBHandlerError
 from handlers.image_handler import ImageHandler
 from handlers.text_handler import TextHandler
-from handlers.video_handler import VideoHandler
+from handlers.VideoClassifier import VideoClassifier
 from watchdog_service import DoCAEventHandler
 
 logger = logging.getLogger("doca.gui")
@@ -65,8 +67,8 @@ class HandlerPool:
     def __init__(self) -> None:
         self._text: Optional[TextHandler] = None
         self._image: Optional[ImageHandler] = None
-        self._audio: Optional[AudioHandler] = None
-        self._video: Optional[VideoHandler] = None
+        self._audio: Optional[AudioClassifier] = None
+        self._video: Optional[VideoClassifier] = None
         self._db: Optional[DBHandler] = None
 
     # Each property logs once, the first time it is hit.
@@ -85,17 +87,17 @@ class HandlerPool:
         return self._image
 
     @property
-    def audio(self) -> AudioHandler:
+    def audio(self) -> AudioClassifier:
         if self._audio is None:
-            logger.info("Loading AudioHandler (inaSpeechSegmenter) ...")
-            self._audio = AudioHandler()
+            logger.info("Loading AudioClassifier (inaSpeechSegmenter) ...")
+            self._audio = AudioClassifier()
         return self._audio
 
     @property
-    def video(self) -> VideoHandler:
+    def video(self) -> VideoClassifier:
         if self._video is None:
-            logger.info("Loading VideoHandler (OpenCV + SSIM) ...")
-            self._video = VideoHandler()
+            logger.info("Loading VideoClassifier (OpenCV + SSIM) ...")
+            self._video = VideoClassifier()
         return self._video
 
     @property

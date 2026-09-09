@@ -27,18 +27,19 @@ from typing import Any, Callable, Optional
 
 import magic
 
-from handlers.audio_handler import AudioHandler
+from handlers.AudioClassifier import AudioClassifier
 from handlers.db_handler import DBHandler, DBHandlerError
 from handlers.image_handler import ImageHandler
 from handlers.text_handler import TextHandler
-from handlers.video_handler import VideoHandler
+from handlers.VideoClassifier import VideoClassifier
 
 logger = logging.getLogger("doca.batch_sorter")
 
 # Category labels used both for tallies and for output subfolder names.
 CATEGORY_TEXT = "Text"
 CATEGORY_IMAGE = "Image"
-CATEGORY_AUDIO = "Audio"
+CATEGORY_AUDIO_MUSIC = "Audio_Music"
+CATEGORY_AUDIO_SPEECH = "Audio_Speech"
 CATEGORY_GENERAL_VIDEO = "General_Video"
 CATEGORY_SECURITY = "Security_Footage"
 CATEGORY_OTHERS = "Others"
@@ -208,14 +209,14 @@ class DocumentSorter:
         db_handler: Optional[DBHandler] = None,
         text_handler: Optional[TextHandler] = None,
         image_handler: Optional[ImageHandler] = None,
-        audio_handler: Optional[AudioHandler] = None,
-        video_handler: Optional[VideoHandler] = None,
+        audio_handler: Optional[AudioClassifier] = None,
+        video_handler: Optional[VideoClassifier] = None,
     ) -> None:
         self.db = db_handler or DBHandler()
         self.text_handler = text_handler or TextHandler()
         self.image_handler = image_handler or ImageHandler()
-        self.audio_handler = audio_handler or AudioHandler()
-        self.video_handler = video_handler or VideoHandler()
+        self.audio_handler = audio_handler or AudioClassifier()
+        self.video_handler = video_handler or VideoClassifier()
 
         try:
             self._mime = magic.Magic(mime=True)
@@ -334,7 +335,11 @@ class DocumentSorter:
         if top_category == "image":
             return CATEGORY_IMAGE
         if top_category == "audio":
-            return CATEGORY_AUDIO
+            music_secs = metadata.get("music_seconds", 0)
+            speech_secs = metadata.get("male_seconds", 0) + metadata.get("female_seconds", 0)
+            if speech_secs > music_secs:
+                return CATEGORY_AUDIO_SPEECH
+            return CATEGORY_AUDIO_MUSIC
         if top_category == "video":
             if metadata.get("is_security_footage"):
                 return CATEGORY_SECURITY

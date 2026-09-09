@@ -23,11 +23,11 @@ from typing import Any, Optional
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from handlers.audio_handler import AudioHandler
+from handlers.AudioClassifier import AudioClassifier
 from handlers.db_handler import DBHandler, DBHandlerError
 from handlers.ImageProcessor import ImageProcessor
 from handlers.TextClassifier import TextClassifier
-from handlers.video_handler import VideoHandler
+from handlers.VideoClassifier import VideoClassifier
 
 logger = logging.getLogger("doca.watchdog")
 
@@ -38,9 +38,11 @@ DEFAULT_OUTPUT_DIR = "./organized_output"
 CATEGORY_FOLDERS: dict[str, str] = {
     "text": "Text",
     "image": "Image",
-    "audio": "Audio",
-    # "video" is resolved dynamically based on is_security_footage.
+    # audio and video are resolved dynamically
 }
+AUDIO_MUSIC_FOLDER = "Audio_Music"
+AUDIO_SPEECH_FOLDER = "Audio_Speech"
+
 VIDEO_SECURITY_FOLDER = "Security_Footage"
 VIDEO_GENERAL_FOLDER = "General_Video"
 
@@ -158,8 +160,8 @@ class DoCAEventHandler(FileSystemEventHandler):
         db_handler: DBHandler,
         text_handler: TextClassifier,
         image_handler: ImageProcessor,
-        video_handler: VideoHandler,
-        audio_handler: AudioHandler,
+        video_handler: VideoClassifier,
+        audio_handler: AudioClassifier,
         output_dir: str = DEFAULT_OUTPUT_DIR,
     ) -> None:
         super().__init__()
@@ -255,6 +257,12 @@ class DoCAEventHandler(FileSystemEventHandler):
             if metadata.get("is_security_footage"):
                 return VIDEO_SECURITY_FOLDER
             return VIDEO_GENERAL_FOLDER
+        if category == "audio":
+            music_secs = metadata.get("music_seconds", 0)
+            speech_secs = metadata.get("male_seconds", 0) + metadata.get("female_seconds", 0)
+            if speech_secs > music_secs:
+                return AUDIO_SPEECH_FOLDER
+            return AUDIO_MUSIC_FOLDER
         return CATEGORY_FOLDERS.get(category, category.capitalize())
 
     def _route_file(
@@ -314,8 +322,8 @@ def _build_event_handler(output_dir: str) -> DoCAEventHandler:
     db_handler = DBHandler()
     text_handler = TextClassifier()
     image_handler = ImageProcessor()
-    video_handler = VideoHandler()
-    audio_handler = AudioHandler()
+    video_handler = VideoClassifier()
+    audio_handler = AudioClassifier()
     logger.info("Handlers ready.")
     return DoCAEventHandler(
         db_handler=db_handler,
