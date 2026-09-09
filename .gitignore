@@ -1,0 +1,12 @@
+doca_env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+.env
+.DS_Store
+.idea/
+.vscode/
+monitored_folder/*
+!monitored_folder/.gitkeep

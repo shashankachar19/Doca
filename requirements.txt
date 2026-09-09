@@ -1,0 +1,15 @@
+nltk
+gensim
+opencv-python
+pytesseract
+scikit-image
+inaSpeechSegmenter
+python-magic-bin
+watchdog
+fuzzywuzzy
+python-Levenshtein
+couchdb
+PyQt6
+python-docx
+openpyxl
+python-pptx
