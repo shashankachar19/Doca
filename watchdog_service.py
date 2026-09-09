@@ -25,8 +25,8 @@ from watchdog.observers import Observer
 
 from handlers.audio_handler import AudioHandler
 from handlers.db_handler import DBHandler, DBHandlerError
-from handlers.image_handler import ImageHandler
-from handlers.text_handler import TextHandler
+from handlers.ImageProcessor import ImageProcessor
+from handlers.TextClassifier import TextClassifier
 from handlers.video_handler import VideoHandler
 
 logger = logging.getLogger("doca.watchdog")
@@ -49,10 +49,11 @@ EXTENSION_MAP: dict[str, str] = {
     # text
     ".txt": "text", ".md": "text", ".rst": "text", ".log": "text",
     ".csv": "text", ".json": "text", ".xml": "text", ".html": "text",
-    ".htm": "text", ".pdf": "text",
+    ".htm": "text",
     # image
     ".png": "image", ".jpg": "image", ".jpeg": "image", ".bmp": "image",
     ".tif": "image", ".tiff": "image", ".webp": "image", ".gif": "image",
+    ".pdf": "image",
     # video
     ".mp4": "video", ".avi": "video", ".mov": "video", ".mkv": "video",
     ".webm": "video", ".m4v": "video",
@@ -155,8 +156,8 @@ class DoCAEventHandler(FileSystemEventHandler):
     def __init__(
         self,
         db_handler: DBHandler,
-        text_handler: TextHandler,
-        image_handler: ImageHandler,
+        text_handler: TextClassifier,
+        image_handler: ImageProcessor,
         video_handler: VideoHandler,
         audio_handler: AudioHandler,
         output_dir: str = DEFAULT_OUTPUT_DIR,
@@ -311,8 +312,8 @@ def _build_event_handler(output_dir: str) -> DoCAEventHandler:
     """Instantiate all handlers. Fails fast if CouchDB is unreachable."""
     logger.info("Initializing DoCA handlers...")
     db_handler = DBHandler()
-    text_handler = TextHandler()
-    image_handler = ImageHandler()
+    text_handler = TextClassifier()
+    image_handler = ImageProcessor()
     video_handler = VideoHandler()
     audio_handler = AudioHandler()
     logger.info("Handlers ready.")

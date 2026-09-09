@@ -13,3 +13,5 @@ PyQt6
 python-docx
 openpyxl
 python-pptx
+PyMuPDF
+scikit-learn
