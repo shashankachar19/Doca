@@ -4,7 +4,7 @@ opencv-python
 pytesseract
 scikit-image
 inaSpeechSegmenter
-python-magic-bin
+python-magic
 watchdog
 fuzzywuzzy
 python-Levenshtein

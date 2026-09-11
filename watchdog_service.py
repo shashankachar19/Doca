@@ -51,7 +51,7 @@ EXTENSION_MAP: dict[str, str] = {
     # text
     ".txt": "text", ".md": "text", ".rst": "text", ".log": "text",
     ".csv": "text", ".json": "text", ".xml": "text", ".html": "text",
-    ".htm": "text",
+    ".htm": "text", ".docx": "text", ".pptx": "text", ".xlsx": "text",
     # image
     ".png": "image", ".jpg": "image", ".jpeg": "image", ".bmp": "image",
     ".tif": "image", ".tiff": "image", ".webp": "image", ".gif": "image",
