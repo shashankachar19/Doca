@@ -10,3 +10,7 @@ __pycache__/
 .vscode/
 monitored_folder/*
 !monitored_folder/.gitkeep
+
+test_data/
+monitored_folder/
+organized_output/
