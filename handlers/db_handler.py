@@ -8,6 +8,7 @@ storing and retrieving document metadata.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Optional
 
 import couchdb
@@ -15,9 +16,32 @@ from couchdb.http import ResourceConflict, ResourceNotFound, ServerError
 
 logger = logging.getLogger(__name__)
 
-# UPDATED: Injected admin credentials for the Docker CouchDB instance
-DEFAULT_COUCHDB_URL = "http://admin:admin@127.0.0.1:5984"
-DEFAULT_DB_NAME = "doca_db"
+
+def _load_couchdb_url() -> str:
+    """Build the CouchDB connection URL from environment variables.
+
+    Reads COUCHDB_URL, COUCHDB_USER, and COUCHDB_PASSWORD from the
+    environment (or a ``.env`` file via python-dotenv).  Falls back to
+    ``http://127.0.0.1:5984`` with no credentials when unset.
+    """
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass  # python-dotenv is optional; env vars still work
+
+    base_url = os.environ.get("COUCHDB_URL", "http://127.0.0.1:5984")
+    user = os.environ.get("COUCHDB_USER", "")
+    password = os.environ.get("COUCHDB_PASSWORD", "")
+
+    if user and password:
+        # Inject credentials into the URL scheme://user:pass@host:port
+        scheme, rest = base_url.split("://", 1)
+        return f"{scheme}://{user}:{password}@{rest}"
+    return base_url
+
+
+DEFAULT_DB_NAME = os.environ.get("COUCHDB_DB_NAME", "doca_db")
 
 
 class DBHandlerError(Exception):
@@ -30,18 +54,20 @@ class DBHandler:
     Parameters
     ----------
     url:
-        Base URL of the CouchDB server. Defaults to ``http://admin:admin@127.0.0.1:5984``.
+        Full CouchDB URL.  When ``None``, built automatically from the
+        ``COUCHDB_URL``, ``COUCHDB_USER``, and ``COUCHDB_PASSWORD``
+        environment variables (or a ``.env`` file).
     db_name:
         Name of the database to use. Created automatically if missing.
     """
 
     def __init__(
         self,
-        url: str = DEFAULT_COUCHDB_URL,
-        db_name: str = DEFAULT_DB_NAME,
+        url: Optional[str] = None,
+        db_name: Optional[str] = None,
     ) -> None:
-        self.url = url
-        self.db_name = db_name
+        self.url = url or _load_couchdb_url()
+        self.db_name = db_name or DEFAULT_DB_NAME
         self._server: Optional[couchdb.Server] = None
         self._db: Optional[couchdb.Database] = None
         self._connect()

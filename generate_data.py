@@ -92,8 +92,10 @@ def main():
         generate_video(os.path.join(OUT_DIR, f"video_{i:02d}.mp4"), is_security)
 
     print("Copying files to monitored_folder...")
-    os.makedirs("monitored_folder", exist_ok=True)
-    os.system(f"cp -r {OUT_DIR}/* monitored_folder/")
+    import shutil
+    if os.path.isdir("monitored_folder"):
+        shutil.rmtree("monitored_folder")
+    shutil.copytree(OUT_DIR, "monitored_folder")
 
     print("Data generation complete.")
 

@@ -40,6 +40,7 @@ CATEGORY_TEXT = "Text"
 CATEGORY_IMAGE = "Image"
 CATEGORY_AUDIO_MUSIC = "Audio_Music"
 CATEGORY_AUDIO_SPEECH = "Audio_Speech"
+CATEGORY_AUDIO = "Audio"  # fallback when segmenter is unavailable
 CATEGORY_GENERAL_VIDEO = "General_Video"
 CATEGORY_SECURITY = "Security_Footage"
 CATEGORY_OTHERS = "Others"
@@ -337,6 +338,9 @@ class DocumentSorter:
         if top_category == "audio":
             music_secs = metadata.get("music_seconds", 0)
             speech_secs = metadata.get("male_seconds", 0) + metadata.get("female_seconds", 0)
+            # When the segmenter isn't available, both values are 0.
+            if music_secs == 0 and speech_secs == 0:
+                return CATEGORY_AUDIO
             if speech_secs > music_secs:
                 return CATEGORY_AUDIO_SPEECH
             return CATEGORY_AUDIO_MUSIC

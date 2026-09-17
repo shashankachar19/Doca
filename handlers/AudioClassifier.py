@@ -4,12 +4,18 @@ Provides an :class:`AudioClassifier` that runs Ina's Speech Segmenter on an
 audio file, summarizes the detected labels (music / male / female /
 noise / silence) and returns a JSON-safe metadata dictionary suitable
 for :meth:`handlers.db_handler.DBHandler.save_document`.
+
+On platforms where ``inaSpeechSegmenter`` is unavailable (Windows, macOS),
+the classifier degrades gracefully: audio files are still catalogued with
+basic metadata but labelled as ``Audio`` instead of being split into
+speech vs. music.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import sys
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -19,6 +25,25 @@ SUPPORTED_EXTENSIONS = {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".wma"}
 # Labels emitted by inaSpeechSegmenter that we explicitly surface.
 # Anything else is tracked under "other_seconds".
 _TRACKED_LABELS = {"music", "male", "female", "noise", "noEnergy"}
+
+# Whether inaSpeechSegmenter is available on this platform.
+_INA_AVAILABLE: bool
+try:
+    from inaSpeechSegmenter import Segmenter as _Segmenter  # noqa: F401
+    _INA_AVAILABLE = True
+except ImportError:
+    _INA_AVAILABLE = False
+    if sys.platform != "linux":
+        logger.info(
+            "inaSpeechSegmenter is not installed (expected on %s). "
+            "Audio classification will use graceful fallback.",
+            sys.platform,
+        )
+    else:
+        logger.warning(
+            "inaSpeechSegmenter is not installed. "
+            "Install it with: pip install inaSpeechSegmenter"
+        )
 
 
 class AudioClassifierError(Exception):
@@ -47,8 +72,14 @@ class AudioClassifier:
         self.vad_engine = vad_engine
         self.detect_gender = detect_gender
         self._segmenter: Optional[Any] = None
+        self._ina_available = _INA_AVAILABLE
         # The segmenter downloads CNN weights on first construction, so
         # we lazily build it the first time it's actually needed.
+
+    @property
+    def is_available(self) -> bool:
+        """Return True if full speech/music segmentation is available."""
+        return self._ina_available
 
     # ------------------------------------------------------------------ #
     # Lazy segmenter init
@@ -58,11 +89,16 @@ class AudioClassifier:
         if self._segmenter is not None:
             return self._segmenter
 
+        if not self._ina_available:
+            raise AudioClassifierError(
+                "inaSpeechSegmenter is not installed on this platform. "
+                "Audio classification is running in fallback mode."
+            )
+
         try:
-            # Imported lazily so that merely importing this module does
-            # not trigger a TensorFlow import and CNN weight download.
             from inaSpeechSegmenter import Segmenter
         except ImportError as exc:
+            self._ina_available = False
             raise AudioClassifierError(
                 "inaSpeechSegmenter is not installed. "
                 "Add it to requirements.txt and reinstall."
@@ -164,6 +200,40 @@ class AudioClassifier:
         }
 
     # ------------------------------------------------------------------ #
+    # Fallback metadata (when inaSpeechSegmenter is unavailable)
+    # ------------------------------------------------------------------ #
+    def _fallback_metadata(self, file_path: str) -> dict[str, Any]:
+        """Return basic metadata when segmentation is not available."""
+        try:
+            size_bytes = os.path.getsize(file_path)
+        except OSError:
+            size_bytes = None
+
+        return {
+            "path": os.path.abspath(file_path),
+            "file_name": os.path.basename(file_path),
+            "file_type": self.FILE_TYPE,
+            "extension": os.path.splitext(file_path)[1].lower(),
+            "size_bytes": size_bytes,
+            "segment_count": 0,
+            "segments": [],
+            "music_seconds": 0.0,
+            "male_seconds": 0.0,
+            "female_seconds": 0.0,
+            "speech_seconds": 0.0,
+            "noise_seconds": 0.0,
+            "silence_seconds": 0.0,
+            "other_seconds": 0.0,
+            "total_seconds": 0.0,
+            "music_pct": None,
+            "speech_pct": None,
+            "classification_note": (
+                "inaSpeechSegmenter is not available on this platform. "
+                "Audio was catalogued but not classified into speech/music."
+            ),
+        }
+
+    # ------------------------------------------------------------------ #
     # Orchestration
     # ------------------------------------------------------------------ #
     def process_file(
@@ -176,6 +246,9 @@ class AudioClassifier:
         ``mime_type`` is accepted for a uniform content-based call signature
         across all handlers; segmentation is MIME-agnostic, so the hint is
         currently unused.
+
+        When ``inaSpeechSegmenter`` is unavailable, returns basic metadata
+        with zero-valued segment summaries instead of raising.
         """
         if not file_path:
             raise ValueError("file_path must be a non-empty string")
@@ -184,6 +257,19 @@ class AudioClassifier:
         extension = os.path.splitext(file_path)[1].lower()
         if extension and extension not in SUPPORTED_EXTENSIONS:
             logger.debug("Unusual audio extension '%s'; attempting anyway.", extension)
+
+        if not os.path.isfile(file_path):
+            raise AudioClassifierError(f"Audio file not found: {file_path}")
+
+        # Graceful degradation: if the segmenter isn't available, return
+        # basic metadata so the rest of the pipeline can continue.
+        if not self._ina_available:
+            logger.info(
+                "Returning fallback metadata for %s "
+                "(inaSpeechSegmenter not available)",
+                file_path,
+            )
+            return self._fallback_metadata(file_path)
 
         segments = self.segment_audio(file_path)
         summary = self._summarize(segments)

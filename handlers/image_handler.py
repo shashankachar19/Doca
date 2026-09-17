@@ -4,6 +4,21 @@ Provides an :class:`ImageHandler` that reads an image file, extracts any
 embedded text with Tesseract OCR, computes SIFT keypoints with OpenCV,
 and returns a JSON-safe metadata dictionary suitable for
 :meth:`handlers.db_handler.DBHandler.save_document`.
+
+OCR preprocessing pipeline
+--------------------------
+Dark-mode screenshots (light text on dark background) defeat naive OCR
+because Tesseract expects dark-on-light text.  The handler now runs a
+multi-pass OCR strategy:
+
+1. **Original grayscale** — standard OCR pass.
+2. **Inverted + adaptive threshold** — detects dark backgrounds (mean
+   intensity < 127), inverts, applies adaptive Gaussian thresholding and
+   morphological cleanup to produce clean dark-on-white text.
+
+The pass yielding the most extracted text wins.  A ``has_text`` flag is
+set when OCR produces ≥ 3 words, enabling downstream classifiers to
+route these images to a Text/Document category.
 """
 
 from __future__ import annotations
@@ -28,6 +43,10 @@ if os.path.exists(_WINDOWS_TESSERACT_CMD):
 
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
 
+# Minimum word count to set the has_text flag.
+# Lowered to 1 so sparse dark-mode UI screenshots still qualify.
+MIN_WORD_COUNT_FOR_TEXT = 1
+
 
 class ImageHandlerError(Exception):
     """Raised when the ImageHandler cannot complete an operation."""
@@ -43,6 +62,10 @@ class ImageHandler:
         Windows or when the binary is not on ``PATH``.
     ocr_lang:
         Tesseract language code(s), e.g. ``"eng"`` or ``"eng+fra"``.
+    min_word_count:
+        Minimum number of words OCR must extract for ``has_text`` to be
+        ``True``.  Lowered to 3 (from an implicit ~10) so that sparse
+        dark-mode screenshots still qualify.
     """
 
     FILE_TYPE = "image"
@@ -51,10 +74,12 @@ class ImageHandler:
         self,
         tesseract_cmd: Optional[str] = None,
         ocr_lang: str = "eng",
+        min_word_count: int = MIN_WORD_COUNT_FOR_TEXT,
     ) -> None:
         if tesseract_cmd:
             pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
         self.ocr_lang = ocr_lang
+        self.min_word_count = min_word_count
 
         try:
             self._sift = cv2.SIFT_create()
@@ -90,12 +115,49 @@ class ImageHandler:
         return image
 
     # ------------------------------------------------------------------ #
-    # OCR
+    # OCR preprocessing for dark-mode / low-contrast images
     # ------------------------------------------------------------------ #
-    def extract_text(self, image_path: str) -> str:
-        """Return OCR text for ``image_path`` with whitespace collapsed."""
-        image = self._read_grayscale(image_path)
+    @staticmethod
+    def _is_dark_background(gray: np.ndarray, threshold: int = 127) -> bool:
+        """Return True if the image's mean intensity suggests a dark background."""
+        return float(np.mean(gray)) < threshold
 
+    @staticmethod
+    def _preprocess_for_ocr(gray: np.ndarray) -> np.ndarray:
+        """Produce a clean dark-on-white binary image for Tesseract.
+
+        Steps:
+        1. If the background is dark (mean < 127), invert the image so
+           that text becomes dark on a light background.
+        2. Apply adaptive Gaussian thresholding to handle uneven lighting
+           and gradient backgrounds common in dark-mode UIs.
+        3. Apply a small morphological close to join broken character
+           strokes caused by anti-aliasing or thin fonts.
+        """
+        work = gray.copy()
+
+        # Step 1: Invert dark images
+        if ImageHandler._is_dark_background(work):
+            work = cv2.bitwise_not(work)
+
+        # Step 2: Adaptive threshold — handles gradient backgrounds
+        work = cv2.adaptiveThreshold(
+            work,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            blockSize=15,   # neighbourhood size (must be odd)
+            C=8,            # constant subtracted from mean
+        )
+
+        # Step 3: Morphological close to repair thin/broken strokes
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        work = cv2.morphologyEx(work, cv2.MORPH_CLOSE, kernel)
+
+        return work
+
+    def _ocr_single(self, image: np.ndarray) -> str:
+        """Run Tesseract on a single prepared image and return cleaned text."""
         try:
             raw = pytesseract.image_to_string(image, lang=self.ocr_lang)
         except pytesseract.TesseractNotFoundError as exc:
@@ -104,14 +166,48 @@ class ImageHandler:
                 f"ImageHandler(tesseract_cmd=...): {exc}"
             ) from exc
         except pytesseract.TesseractError as exc:
-            logger.warning("Tesseract failed on %s: %s", image_path, exc)
+            logger.warning("Tesseract failed: %s", exc)
             return ""
         except RuntimeError as exc:
-            logger.warning("OCR runtime error on %s: %s", image_path, exc)
+            logger.warning("OCR runtime error: %s", exc)
             return ""
-
-        # Collapse runs of whitespace/newlines and trim.
         return " ".join(raw.split()).strip()
+
+    # ------------------------------------------------------------------ #
+    # OCR — multi-pass strategy
+    # ------------------------------------------------------------------ #
+    def extract_text(self, image_path: str) -> str:
+        """Return OCR text for ``image_path``.
+
+        Runs two passes:
+        1. Original grayscale image.
+        2. Preprocessed (inverted + adaptive-threshold + morph-close).
+
+        Returns whichever pass extracted more text, giving dark-mode
+        screenshots a fair shot.
+        """
+        gray = self._read_grayscale(image_path)
+
+        # Pass 1: original
+        text_original = self._ocr_single(gray)
+
+        # Pass 2: preprocessed for dark/low-contrast backgrounds
+        try:
+            preprocessed = self._preprocess_for_ocr(gray)
+            text_preprocessed = self._ocr_single(preprocessed)
+        except cv2.error as exc:
+            logger.debug("Preprocessing failed for %s: %s", image_path, exc)
+            text_preprocessed = ""
+
+        # Keep whichever pass extracted more text.
+        if len(text_preprocessed) > len(text_original):
+            logger.debug(
+                "Preprocessed OCR yielded more text for %s "
+                "(%d vs %d chars)",
+                image_path, len(text_preprocessed), len(text_original),
+            )
+            return text_preprocessed
+        return text_original
 
     # ------------------------------------------------------------------ #
     # Feature extraction
@@ -161,6 +257,14 @@ class ImageHandler:
 
         extracted_text = self.extract_text(file_path)
         keypoint_count = self.extract_features(file_path)
+        word_count = len(extracted_text.split()) if extracted_text else 0
+        has_text = word_count >= self.min_word_count
+
+        logger.info(
+            "OCR result for '%s': word_count=%d, has_text=%s, text=%r",
+            os.path.basename(file_path), word_count, has_text,
+            (extracted_text[:200] + '...') if len(extracted_text) > 200 else extracted_text,
+        )
 
         try:
             size_bytes = os.path.getsize(file_path)
@@ -175,5 +279,7 @@ class ImageHandler:
             "size_bytes": size_bytes,
             "ocr_text": extracted_text,
             "ocr_text_length": len(extracted_text),
+            "ocr_word_count": word_count,
+            "has_text": has_text,
             "sift_keypoint_count": int(keypoint_count),
         }

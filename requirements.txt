@@ -1,17 +1,55 @@
+# ===========================================================================
+# DoCA - Document Classification and Analysis
+# Python dependencies (Python 3.10+ required)
+# ===========================================================================
+# Install:  pip install -r requirements.txt
+# Optional: pip install inaSpeechSegmenter  (Linux-only, for audio speech/music classification)
+# ===========================================================================
+
+# --- NLP & Text ---
 nltk
-gensim
-opencv-python
+gensim>=4.3,<5
+scikit-learn
+
+# --- Image & Video ---
+opencv-python>=4.8
 pytesseract
 scikit-image
-inaSpeechSegmenter
-python-magic
+PyMuPDF                     # fitz — PDF rendering for the ImageProcessor
+
+# --- Audio (core) ---
+# inaSpeechSegmenter is Linux-only (requires TensorFlow + specific C libs).
+# Install it manually on Linux:  pip install inaSpeechSegmenter
+# On Windows/macOS, audio classification gracefully degrades.
+
+# --- File-type detection ---
+# python-magic requires libmagic.  On Windows the 'python-magic-bin' package
+# bundles the DLL; on Linux/macOS the system library is used.
+# We install the right one automatically via the setup script, but if
+# installing manually:
+#   Windows:  pip install python-magic-bin
+#   Linux:    pip install python-magic        (+ apt install libmagic1)
+#   macOS:    pip install python-magic        (+ brew install libmagic)
+python-magic; sys_platform != 'win32'
+python-magic-bin; sys_platform == 'win32'
+
+# --- Directory monitoring ---
 watchdog
+
+# --- Fuzzy string matching ---
 fuzzywuzzy
 python-Levenshtein
+
+# --- Database ---
 couchdb
-PyQt6
+
+# --- Office document parsing ---
 python-docx
 openpyxl
 python-pptx
-PyMuPDF
-scikit-learn
+
+# --- GUI ---
+PyQt6
+
+# --- Configuration ---
+python-dotenv

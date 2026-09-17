@@ -42,6 +42,7 @@ CATEGORY_FOLDERS: dict[str, str] = {
 }
 AUDIO_MUSIC_FOLDER = "Audio_Music"
 AUDIO_SPEECH_FOLDER = "Audio_Speech"
+AUDIO_FOLDER = "Audio"  # fallback when segmenter is unavailable
 
 VIDEO_SECURITY_FOLDER = "Security_Footage"
 VIDEO_GENERAL_FOLDER = "General_Video"
@@ -260,6 +261,9 @@ class DoCAEventHandler(FileSystemEventHandler):
         if category == "audio":
             music_secs = metadata.get("music_seconds", 0)
             speech_secs = metadata.get("male_seconds", 0) + metadata.get("female_seconds", 0)
+            # When the segmenter isn't available, both values are 0.
+            if music_secs == 0 and speech_secs == 0:
+                return AUDIO_FOLDER
             if speech_secs > music_secs:
                 return AUDIO_SPEECH_FOLDER
             return AUDIO_MUSIC_FOLDER
@@ -400,7 +404,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         stop_event.set()
 
     signal.signal(signal.SIGINT, _handle_signal)
-    signal.signal(signal.SIGTERM, _handle_signal)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, _handle_signal)
 
     try:
         while not stop_event.is_set():

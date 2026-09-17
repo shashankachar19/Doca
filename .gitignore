@@ -1,16 +1,38 @@
+# Python
 doca_env/
 __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
 .venv/
+venv/
+
+# Environment / Secrets
 .env
-.DS_Store
+
+# IDE
 .idea/
 .vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Project runtime
 monitored_folder/*
 !monitored_folder/.gitkeep
-
-test_data/
-monitored_folder/
 organized_output/
+test_data/
+
+# Logs and recordings
+*.log
+output.webm
+ffmpeg.log
+watchdog.log
+ui.log
+
+# QA artifacts (generated, not source)
+qa-artifacts/

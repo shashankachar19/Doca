@@ -26,7 +26,6 @@ from __future__ import annotations
 import logging
 import os
 import sys
-import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from typing import Any, Optional
 
@@ -45,7 +44,9 @@ from batch_sorter import DocumentSorter
 from handlers.AudioClassifier import AudioClassifier
 from handlers.db_handler import DBHandler, DBHandlerError
 from handlers.image_handler import ImageHandler
+from handlers.ImageProcessor import ImageProcessor
 from handlers.text_handler import TextHandler
+from handlers.TextClassifier import TextClassifier
 from handlers.VideoClassifier import VideoClassifier
 from watchdog_service import DoCAEventHandler
 
@@ -70,6 +71,9 @@ class HandlerPool:
         self._audio: Optional[AudioClassifier] = None
         self._video: Optional[VideoClassifier] = None
         self._db: Optional[DBHandler] = None
+        # Watchdog-specific handler types (TextClassifier, ImageProcessor)
+        self._text_classifier: Optional[TextClassifier] = None
+        self._image_processor: Optional[ImageProcessor] = None
 
     # Each property logs once, the first time it is hit.
     @property
@@ -107,6 +111,22 @@ class HandlerPool:
             self._db = DBHandler()
         return self._db
 
+    @property
+    def text_classifier(self) -> TextClassifier:
+        """TextClassifier for the watchdog (different class from TextHandler)."""
+        if self._text_classifier is None:
+            logger.info("Loading TextClassifier (NLTK + Doc2Vec) ...")
+            self._text_classifier = TextClassifier()
+        return self._text_classifier
+
+    @property
+    def image_processor(self) -> ImageProcessor:
+        """ImageProcessor for the watchdog (different class from ImageHandler)."""
+        if self._image_processor is None:
+            logger.info("Loading ImageProcessor (OCR + CV + PDF) ...")
+            self._image_processor = ImageProcessor()
+        return self._image_processor
+
     def build_sorter(self) -> DocumentSorter:
         """Return a :class:`DocumentSorter` that reuses the pooled handlers."""
         return DocumentSorter(
@@ -118,11 +138,15 @@ class HandlerPool:
         )
 
     def build_event_handler(self, output_dir: str) -> DoCAEventHandler:
-        """Return a :class:`DoCAEventHandler` that reuses the pooled handlers."""
+        """Return a :class:`DoCAEventHandler` that reuses the pooled handlers.
+
+        Note: DoCAEventHandler expects TextClassifier and ImageProcessor
+        (not TextHandler / ImageHandler used by the batch sorter).
+        """
         return DoCAEventHandler(
             db_handler=self.db,
-            text_handler=self.text,
-            image_handler=self.image,
+            text_handler=self.text_classifier,
+            image_handler=self.image_processor,
             video_handler=self.video,
             audio_handler=self.audio,
             output_dir=output_dir,
@@ -774,10 +798,19 @@ QProgressBar::chunk {
     border-radius: 5px;
 }
 QTableWidget {
-    background: #ffffff;
-    gridline-color: #e4e8f0;
+    background-color: #ffffff;
+    alternate-background-color: #f8fafc;
+    color: #0f172a;
+    gridline-color: #e2e8f0;
     border: 1px solid #c8cdd8;
     border-radius: 6px;
+}
+QTableWidget::item {
+    color: #0f172a;
+}
+QTableWidget::item:selected {
+    background-color: #2563eb;
+    color: #ffffff;
 }
 QHeaderView::section {
     background: #e4e8f0;
